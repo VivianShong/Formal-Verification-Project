@@ -298,7 +298,7 @@ For completeness: \texttt{checkSet}, \texttt{addToSet}, \texttt{union}, \texttt{
 \begin{itemize}
   \item \textbf{\texttt{setProduct} was the most difficult.} We explained the details above. The short version is that it is the only method that combines multiplication of two variables with ``there exist two indices'' statements inside two loops, and this combination is known to be difficult for SMT solvers. It was also the hardest to debug, because the failure was a timeout. A failed assertion tells you \emph{what} Dafny could not prove. A timeout gives much less information about where the problem lies.
   \item \textbf{\texttt{difference} in Part 3} was the second hardest. The postcondition \texttt{t == s1} is about the exact sequence, not just which elements it contains, so our usual ``\texttt{t} contains exactly these elements'' invariant was not enough. We needed an extra invariant that pins down \texttt{t} completely in the even/odd case, and we had to stop using \texttt{addToSet}.
-  \item \textbf{Getting \texttt{isSet} right} was not hard to fix, but it was the most instructive mistake. Our sorted definition looked reasonable at first, and we only found the problem when a later method could not be verified.
+  \item \textbf{Before Part 3 was released, we made a mistake in the definition of \texttt{isSet} in Parts 1--2.} At first we assumed that the set had to be sorted, but it does not. It was not hard to fix, but it was the most instructive mistake. Our sorted definition looked reasonable at first, and we only found the problem when a later method could not be verified.
 \end{itemize}
 
 \subsection{How proof attempts changed our understanding of specification and correctness}
