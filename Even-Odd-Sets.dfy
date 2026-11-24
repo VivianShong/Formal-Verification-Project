@@ -55,7 +55,7 @@ lemma OddModulo(n: int)
 {}
 lemma ModuloOdd(n: int)
   ensures n % 2 != 0 ==> isOdd(n)
-{ // TODO: complete his proof
+{
   if n % 2 == 1 {
 	  var m := n / 2;
 	  assert n == 2 * m + 1;
@@ -63,7 +63,7 @@ lemma ModuloOdd(n: int)
 }
 lemma checkOddCorrect(n: int)
   ensures checkOdd(n) <==> isOdd(n)
-{ // TODO: complete his proof
+{
   OddModulo(n);
 	ModuloOdd(n);
 }
@@ -117,27 +117,26 @@ lemma InvertParityCorrect(n: int)
 /*** Even and Odd Sets ***/
 
 /* A set is represented as a sequence with no duplicates */
-predicate isSet(s: seq<int>) {
- // TODO: complete this predicate
+predicate isSet(s: seq<int>) 
+{
  forall i,j :: 0 <= i < j < |s| ==> s[i] != s[j]
 }
 
 // hint don't use return statements. Set b instead.
 method checkSet(s: seq<int>) returns (b: bool)
   ensures b <==> isSet(s)
-{ // TODO: complete this method
+{ 
   b := isSet(s);
 }
 
 /* An even set is a set where all elements are even */
 ghost predicate isEvenSet(s: seq<int>) {
- // TODO: complete this predicate
  isSet(s) && forall i :: 0<=i<|s| ==> isEven(s[i])
 }
 
 method checkEvenSet(s: seq<int>) returns (b: bool)
   ensures b <==> isEvenSet(s)
-{ // TODO: complete this method
+{ 
   b := isSet(s) && forall i :: 0 <= i < |s| ==> checkEven(s[i]);
   forall i | 0 <= i < |s| ensures checkEven(s[i]) <==> isEven(s[i])
   {
@@ -147,13 +146,13 @@ method checkEvenSet(s: seq<int>) returns (b: bool)
 
 /* An odd set is a set where all elements are odd */
 ghost predicate isOddSet(s: seq<int>) {
-  // TODO: complete this predicate
+  
   isSet(s) && forall i :: 0<=i<|s| ==> isOdd(s[i])
 }
 
 method checkOddSet(s: seq<int>) returns (b: bool)
   ensures b <==> isOddSet(s)
-{ // TODO: complete this method
+{
   b := isSet(s) && forall i :: 0 <= i < |s| ==> checkOdd(s[i]);
   forall i | 0 <= i < |s| ensures checkOdd(s[i]) <==> isOdd(s[i])
   {
@@ -169,9 +168,6 @@ method checkOddSet(s: seq<int>) returns (b: bool)
 
 /* Adds n to a set s, making sure it remains a set */
 method addToSet(s: seq<int>, n: int) returns (b: seq<int>)
-// TODO: Specify the behavior of this method so that your specification characterizes the allowed outputs,
-  // Marks will be awarded for specifying as much as possible all relevant properties of the output.
-  // Hint: You don't need to reimplement addToSet as a function to use in your specification.
   requires isSet(s)
   ensures isSet(b)
   ensures forall x :: x in b <==> (x in s || x == n)
