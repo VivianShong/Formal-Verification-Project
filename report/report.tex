@@ -1,0 +1,333 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{textcomp}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\setlist{itemsep=2pt, topsep=4pt}
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+\setlength{\emergencystretch}{3em}
+
+% ---------- Dafny syntax highlighting ----------
+\lstdefinelanguage{dafny}{
+  morekeywords={method, function, predicate, lemma, ghost, opaque, returns,
+    requires, ensures, invariant, decreases, var, if, else, while, forall,
+    exists, assert, reveal, in, seq, int, bool, true, false},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+}
+\lstset{
+  language=dafny,
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue!60!black}\bfseries,
+  commentstyle=\color{green!40!black}\itshape,
+  frame=single,
+  rulecolor=\color{black!25},
+  backgroundcolor=\color{black!3},
+  framesep=4pt,
+  xleftmargin=6pt,
+  xrightmargin=6pt,
+  columns=fullflexible,
+  keepspaces=true,
+  breaklines=true,
+  tabsize=2,
+  showstringspaces=false,
+  upquote=true,
+  aboveskip=6pt,
+  belowskip=6pt,
+}
+
+% A small box for the "Suggested by AI?" line in each change
+\newcommand{\aiflag}[1]{\par\noindent\textbf{Suggested by an AI tool?} #1\par}
+
+\title{Formal Verification Project}
+\author{Hong Shen (22338684) \and Leon Andorfi (23335878)}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\section*{Summary}
+
+We implemented and verified a small library of set operations in Dafny, where a ``set'' is a sequence of integers with no duplicates. Most methods were straightforward once we had the right loop invariant. The exception was \texttt{setProduct}, which we had to rewrite for Part 3 so that it reuses \texttt{setScale} and \texttt{union}. We used Claude Code to check our code and find bugs, but not to write the changes described below.
+
+\section{Team details}
+
+\subsection{Team members}
+
+\begin{itemize}
+  \item Hong Shen, student ID 22338684
+  \item Leon Andorfi, student ID 23335878
+\end{itemize}
+
+\subsection{How we collaborated}
+
+We shared our code throughout the project and split the work roughly by part.
+
+\begin{itemize}
+  \item \textbf{Hong Shen implemented Parts 1 and 2.} This covered the parity lemmas (for example \texttt{ModuloOdd}, \texttt{OddTimesOdd} and \texttt{InvertParityCorrect}), the definition of \texttt{isSet}, and the specifications and implementations of the set operations in \texttt{Even-Odd-Sets.dfy}.
+  \item \textbf{Leon Andorfi implemented Part 3.} This covered the method bodies, loop invariants and helper lemmas in \texttt{Even-Odd-Sets-part3.dfy}, including the rewrite of \texttt{setProduct}.
+  \item \textbf{We reviewed each other's work.} Part 3 builds directly on Part 2, so most of the Part 3 code started as a copy of the Part 2 code. Whenever Part 3 forced a change, we discussed whether the Part 2 version had been wrong or whether the new specification simply needed a different approach.
+\end{itemize}
+
+\section{Use of AI tools}
+
+\subsection{Which tools}
+
+We used one tool: \textbf{Claude Code} (Anthropic's coding assistant, run inside the project folder so it could read the \texttt{.dfy} files).
+
+\subsection{How it contributed}
+
+We used Claude Code as a reviewer rather than as an author. Concretely, we used it to:
+
+\begin{itemize}
+  \item \textbf{Check correctness.} We asked it to read our method bodies and invariants and tell us whether they actually matched the specification, especially before we spent time waiting on the verifier.
+  \item \textbf{Find bugs.} When Dafny reported a failing postcondition or invariant, we asked it to help us work out \emph{why}. Often the answer was a missing fact that Dafny needed to be told about, rather than a bug in the code itself.
+  \item \textbf{Explain verifier behaviour.} Some error messages, in particular timeouts, are hard to interpret. It was helpful to have something that could explain, for example, why a nested existential over a product \texttt{s1[a] * s2[b]} is difficult for the underlying solver.
+\end{itemize}
+
+The code changes in Section~\ref{sec:changes} were written by us. Where the AI pointed us towards a problem, we say so in the relevant entry.
+
+\section{Code modifications}
+\label{sec:changes}
+
+This section lists every change we made to \emph{computational} code, meaning code that actually runs (method bodies and the compiled predicate \texttt{isSet}). As the brief allows, we do not track changes to invariants, assertions, lemma calls or other proof scaffolding. We do, however, explain the proof scaffolding where it is needed to understand why a code change helped.
+
+Before the list of changes, here is a short tour of how the methods work, since the changes only make sense with that in mind.
+
+\subsection{How the methods work}
+
+\paragraph{Representation.} Dafny has a built-in \texttt{set} type, but the assignment asks us to represent a set as a \texttt{seq<int>}, a list of integers. The only rule is that a list must not contain the same number twice. So \texttt{[3, 1, 2]} is a valid set and \texttt{[1, 1]} is not. Order does not matter for the meaning of the set, but it does exist in the representation, and this turned out to matter (see Change~1).
+
+\paragraph{The common pattern.} Almost every operation follows the same recipe:
+\begin{enumerate}
+  \item Start with an empty result \texttt{t := []}.
+  \item Walk through the input with an index \texttt{i}, one element at a time.
+  \item For each element, decide whether it belongs in the result and, if so, add it.
+\end{enumerate}
+For example, \texttt{intersection(s1, s2)} walks through \texttt{s1} and keeps an element only if it is also in \texttt{s2}. \texttt{difference(s1, s2)} does the same but keeps an element only if it is \emph{not} in \texttt{s2}. \texttt{union} walks through \texttt{s1} followed by \texttt{s2} and adds everything. \texttt{setScale(s, n)} walks through \texttt{s} and adds \texttt{s[i] * n}. \texttt{invertParitySet} walks through \texttt{s} and adds \texttt{s[i] + 1}.
+
+\paragraph{\texttt{addToSet}, the building block.} Most methods add elements through \texttt{addToSet(s, n)}. It checks whether \texttt{n} is already in \texttt{s}. If it is, it returns \texttt{s} unchanged. If it is not, it returns \texttt{s + [n]}. This is how the other methods avoid creating duplicates, and because \texttt{addToSet} is verified once, every caller can rely on its contract (``the result is still a set and contains exactly the old elements plus \texttt{n}'') without re-proving it.
+
+\paragraph{Why loops need invariants.} Dafny cannot ``run'' a loop to see what it does. Instead, we must state a \emph{loop invariant}: a fact that is true before the loop starts and stays true after every iteration. Dafny checks those two things, and then at the end of the loop it knows the invariant holds together with the exit condition. For \texttt{intersection}, the key invariant is roughly:
+\begin{quote}
+  After looking at the first \texttt{i} elements of \texttt{s1}, the result \texttt{t} contains exactly those elements of \texttt{s1[..i]} that are also in \texttt{s2}.
+\end{quote}
+When the loop ends, \texttt{i} equals \texttt{|s1|}, so \texttt{s1[..i]} is all of \texttt{s1}, and the invariant becomes the postcondition. In practice this last step needs a nudge, which is why several methods end with \texttt{assert s1[..i] == s1;}. Dafny knows this fact is true, but it does not think to use it unless we mention it.
+
+\paragraph{Parity facts.} Parts 2 and 3 also ask us to prove facts like ``if every element of \texttt{s} is even, then every element of \texttt{setScale(s, n)} is even''. Dafny does not know number theory out of the box, so we proved small lemmas such as \texttt{EvenTimes} (an even number times anything is even) and \texttt{OddTimesOdd}, and then called them inside the loops at the exact element being added. A lemma call is like telling Dafny ``remember this fact about \texttt{s[i]}''.
+
+\subsection*{Change 1: the definition of \texttt{isSet}}
+
+\texttt{isSet} is a non-ghost predicate that \texttt{checkSet} actually executes, so we count it as computational code. It changed twice.
+
+\textbf{Original version:}
+\begin{lstlisting}
+predicate isSet(s: seq<int>) {
+ forall i,j :: 0 <= i < j < |s| ==> s[i] < s[j]
+}
+\end{lstlisting}
+
+\textbf{First modification:}
+\begin{lstlisting}
+predicate isSet(s: seq<int>) {
+ forall i,j :: 0 <= i < j < |s| ==> s[i] != s[j]
+}
+\end{lstlisting}
+
+\textbf{Second modification (to match Part 3):}
+\begin{lstlisting}
+predicate isSet(s: seq<int>) {
+  forall i, j :: 0 <= i < |s| && 0 <= j < |s| && s[i] == s[j] ==> i == j
+}
+\end{lstlisting}
+
+\aiflag{No.}
+
+\textbf{Rationale.}
+\begin{itemize}
+  \item \textbf{The first version was too restrictive.} It says the sequence is \emph{strictly sorted}. A sorted list has no duplicates, but the reverse is not true: \texttt{[2, 1]} has no duplicates and is a valid set, yet this definition rejects it. This mattered as soon as we wrote \texttt{addToSet}, because \texttt{s + [n]} is only sorted if \texttt{n} happens to be bigger than everything in \texttt{s}. With the sorted definition, \texttt{addToSet} could not be verified, and that failure is what told us the definition was too strong.
+  \item \textbf{The second version is correct}, and simply says ``any two positions that come in order hold different values''.
+  \item \textbf{The third version means the same thing}, but phrased as ``if two positions hold the same value, they are the same position''. We switched to it because it is the definition used in the Part 3 skeleton, and we wanted both files to use the same definition. It may also be slightly easier for Dafny to use, since it does not require the two indices to be in a particular order, so Dafny does not have to consider the cases \texttt{i < j} and \texttt{j < i} separately.
+\end{itemize}
+
+\subsection*{Change 2: \texttt{checkEvenSet} and \texttt{checkOddSet} (Part 2 to Part 3)}
+
+\textbf{Original (Part 2):}
+\begin{lstlisting}
+method checkEvenSet(s: seq<int>) returns (b: bool)
+  ensures b <==> isEvenSet(s)
+{
+  b := isSet(s) && forall i :: 0 <= i < |s| ==> checkEven(s[i]);
+  ...
+}
+\end{lstlisting}
+
+\textbf{Modified (Part 3):}
+\begin{lstlisting}
+method checkEvenSet(s: seq<int>) returns (b: bool)
+  ensures b <==> isEvenSet(s)
+{
+  b := isSet(s) && forall x :: x in s ==> checkEven(x);
+  ...
+}
+\end{lstlisting}
+\texttt{checkOddSet} changed in exactly the same way, with \texttt{checkOdd} in place of \texttt{checkEven}.
+
+\aiflag{No.}
+
+\textbf{Rationale.} The code computes the same answer in both versions. What changed is the definition it is checked against. In Part 2 we defined \texttt{isEvenSet} in terms of indices (``for every position \texttt{i}, \texttt{s[i]} is even''). The Part 3 skeleton defines it in terms of membership (``for every \texttt{x} in \texttt{s}, \texttt{x} is even''). Mathematically these are the same, but Dafny proves things by matching patterns, and it is generally easier for it to see that two formulas agree when they have the same shape. Rewriting the code to quantify over \texttt{x in s} made the code match the form of the specification, which made the proof more direct.
+
+\subsection*{Change 3: \texttt{difference} (Part 2 to Part 3)}
+
+\textbf{Original (Part 2):}
+\begin{lstlisting}
+while i < |s1|
+  ...
+{
+  if s1[i] !in s2 {
+    t := addToSet(t, s1[i]);
+  }
+  i := i + 1;
+}
+\end{lstlisting}
+
+\textbf{Modified (Part 3):}
+\begin{lstlisting}
+while i < |s1|
+  ...
+{
+  if s1[i] !in s2 {
+    t := t + [s1[i]];
+  }
+  i := i + 1;
+}
+\end{lstlisting}
+
+\aiflag{No. This was a hint given in the Part 3 skeleton.}
+
+\textbf{Rationale.} Part 3 adds a new postcondition to \texttt{difference}:
+\begin{lstlisting}
+ensures isEvenSet(s1) && isOddSet(s2) ==> t == s1
+\end{lstlisting}
+In words: if every element of \texttt{s1} is even and every element of \texttt{s2} is odd, the two sets share nothing, so removing \texttt{s2} from \texttt{s1} leaves \texttt{s1} exactly as it was, \emph{including the order}.
+
+This is a statement about the exact sequence, not just its elements. To prove it we keep the invariant ``\texttt{t == s1[..i]}'' (\texttt{t} is exactly the first \texttt{i} elements of \texttt{s1}) in that case. With \texttt{t := t + [s1[i]]}, the step from \texttt{s1[..i]} to \texttt{s1[..i+1]} is a plain fact about sequences, and Dafny handles it once we state \texttt{s1[..i+1] == s1[..i] + [s1[i]]}.
+
+With \texttt{addToSet}, the result depends on whether \texttt{s1[i]} was already in \texttt{t}, and Dafny has to reason through the contract of another method to see which branch was taken. Appending directly removes that indirection. The cost is that we lose the duplicate check that \texttt{addToSet} gave us for free, so we had to prove by hand that \texttt{s1[i]} is not already in \texttt{t}. That follows from \texttt{s1} itself having no duplicates, which we tell Dafny with \texttt{assert s1[i] !in s1[..i];}.
+
+\subsection*{Change 4: \texttt{setProduct} (Part 2 to Part 3)}
+
+This was the largest change, so we explain it in more detail.
+
+\paragraph{What \texttt{setProduct} does.} Given two sets \texttt{s1} and \texttt{s2}, it returns every number you can get by multiplying an element of \texttt{s1} by an element of \texttt{s2}, without duplicates. For example, \texttt{setProduct([1, 2], [3, 4])} contains \texttt{3, 4, 6, 8}. It helps to picture a table with one row per element of \texttt{s1} and one column per element of \texttt{s2}, where each cell is a product. The result is everything in the table, with duplicates removed.
+
+\textbf{Original (Part 2): a nested loop that visits every cell.}
+\begin{lstlisting}
+t := [];
+var i := 0;
+while i < |s1|
+  ...
+{
+  var j := 0;
+  while j < |s2|
+    ...
+  {
+    t := addToSet(t, s1[i] * s2[j]);
+    j := j + 1;
+  }
+  i := i + 1;
+}
+\end{lstlisting}
+
+\textbf{Modified (Part 3): build one whole row at a time, using methods we had already verified.}
+\begin{lstlisting}
+t := [];
+var i := 0;
+while i < |s1|
+  ...
+{
+  var row := setScale(s2, s1[i]);   // row i: every element of s2 times s1[i]
+  var t' := union(t, row);          // merge the row into the result so far
+  ...
+  t := t';
+  i := i + 1;
+}
+\end{lstlisting}
+
+\aiflag{No, the rewrite was our own idea. We did use Claude Code to understand why the original version was timing out, and that explanation led us to the rewrite.}
+
+\textbf{Rationale.} The nested loop computes the right answer, and in Part 2 we wrote it against our own specification. The trouble came from the Part 3 specification combined with the parity postconditions. To see why, consider what Dafny has to reason about for the nested loop. The inner loop's invariant says something like:
+\begin{quote}
+  Every element of \texttt{t} is either a product from one of the rows \texttt{0..i-1}, \emph{or} a product from the first \texttt{j} cells of row \texttt{i}.
+\end{quote}
+That is a disjunction of two ``there exist \texttt{a} and \texttt{b} such that \ldots \texttt{s1[a] * s2[b]}'' statements, which then has to be re-established every time a single cell is added, and also has to be combined with the even/odd facts. Two things make this hard for Dafny's solver:
+\begin{itemize}
+  \item \textbf{Non-linear arithmetic.} A term such as \texttt{s1[a] * s2[b]} multiplies two variables, which places it in non-linear arithmetic. The SMT solver that Dafny relies on (Z3) has limited support for this, and each additional product term enlarges the search it has to perform.
+  \item \textbf{Nested existential quantifiers.} To use a statement of the form ``there exist \texttt{a} and \texttt{b} such that \ldots'', the solver has to find suitable witnesses (here, the indices \texttt{a} and \texttt{b}). When two such statements appear in a disjunction inside a nested loop, the number of candidate instantiations grows quickly.
+\end{itemize}
+In practice this showed up as verification timing out rather than as a clear error.
+
+The rewrite helps because it splits one large proof into several smaller ones, most of which we had already completed:
+\begin{itemize}
+  \item \texttt{setScale(s2, s1[i])} already has a verified contract saying ``every element of \texttt{row} is \texttt{s2[k] * s1[i]} for some \texttt{k}, and every such product is in \texttt{row}'', together with the parity facts. So the facts about the whole row, including its parity, follow directly from that contract.
+  \item \texttt{union(t, row)} already has a verified contract saying ``\texttt{t\textquotesingle} is a set containing exactly the elements of \texttt{t} and \texttt{row}''. So we never have to reason about duplicates in \texttt{setProduct} itself.
+  \item The only remaining job is to show that ``rows \texttt{0..i-1}'' plus ``row \texttt{i}'' equals ``rows \texttt{0..i}''. We moved that argument into a separate lemma, \texttt{ProductStep}, so that it is proved once, in isolation, with only the facts it needs.
+\end{itemize}
+
+There is one more piece of proof scaffolding that was important for getting this through, even though the brief does not require us to track it. We introduced two helper predicates, \texttt{ProdIn} (``\texttt{x} is a product from rows \texttt{0..i-1}'') and \texttt{RowsIn} (``every product from rows \texttt{0..i-1} is in \texttt{t}''), and marked them \texttt{opaque}. An opaque predicate is one whose definition Dafny hides unless we explicitly \texttt{reveal} it. This may seem counterintuitive, since hiding information would normally make proofs harder, but in this case it appears to help. While the definitions are hidden, the loop invariants are just short names, and the solver does not try to instantiate the multiplication terms inside them. We only reveal the definitions in the few places where they are actually needed (inside \texttt{ProductStep}, and at the very end to turn the invariants into the postconditions).
+
+\subsection*{Methods with no computational changes}
+
+For completeness: \texttt{checkSet}, \texttt{addToSet}, \texttt{union}, \texttt{intersection}, \texttt{setScale} and \texttt{invertParitySet} have the same executable code in Part 2 and Part 3. Getting them to verify against the Part 3 specifications only needed new invariants and lemma calls. For example, \texttt{intersection} now calls \texttt{NotEvenANDOdd(s1[i])} so that Dafny knows an even element of \texttt{s1} can never be found in an all-odd \texttt{s2}, and \texttt{setScale} calls \texttt{EvenTimes} and \texttt{OddTimesOdd} on each element before adding it.
+
+\section{Reflection}
+
+\subsection{Which methods were hardest, and why}
+
+\begin{itemize}
+  \item \textbf{\texttt{setProduct} was the most difficult.} We explained the details above. The short version is that it is the only method that combines multiplication of two variables with ``there exist two indices'' statements inside two loops, and this combination is known to be difficult for SMT solvers. It was also the hardest to debug, because the failure was a timeout. A failed assertion tells you \emph{what} Dafny could not prove. A timeout gives much less information about where the problem lies.
+  \item \textbf{\texttt{difference} in Part 3} was the second hardest. The postcondition \texttt{t == s1} is about the exact sequence, not just which elements it contains, so our usual ``\texttt{t} contains exactly these elements'' invariant was not enough. We needed an extra invariant that pins down \texttt{t} completely in the even/odd case, and we had to stop using \texttt{addToSet}.
+  \item \textbf{Getting \texttt{isSet} right} was not hard to fix, but it was the most instructive mistake. Our sorted definition looked reasonable at first, and we only found the problem when a later method could not be verified.
+\end{itemize}
+
+\subsection{How proof attempts changed our understanding of specification and correctness}
+
+A few things surprised us.
+
+\begin{itemize}
+  \item \textbf{A wrong definition can look fine for a long time.} Our sorted \texttt{isSet} was \emph{stronger} than intended, and any method that only needs to read a set works fine with an overly strong definition. The problem only showed up once a method had to \emph{produce} a set in a way that did not preserve sortedness. We now think it is worth testing a definition against a few small examples (``is \texttt{[2, 1]} a set?'') before building on it.
+  \item \textbf{Specifications that mean the same thing are not equally easy to prove.} The index-based and membership-based versions of \texttt{isEvenSet} are equivalent, but code that matches the shape of the specification was noticeably easier to verify. Before this project we thought of a specification as purely a statement of meaning. Now we think of it as something that also has to be convenient for the verifier to work with.
+  \item \textbf{Comparing Part 2 and Part 3 made us look harder at our own specifications.} In Part 2 we wrote ``\texttt{x in t} if and only if \ldots'' for most operations, and added extras such as size bounds and the special case \texttt{setScale(s, 0) == [0]}. The Part 3 specifications are phrased differently (separate ``everything in \texttt{t} came from the inputs'' and ``everything from the inputs is in \texttt{t}'' clauses, using indices). Some of our Part 2 properties are not in Part 3 at all, and Part 3 included properties we had initially left out, such as \texttt{difference} returning exactly \texttt{s1} in the even/odd case. We later added the Part 3 parity properties to our Part 2 specifications as well. That exercise made it clear that ``correct'' always means ``correct with respect to a particular specification'', and that writing a complete specification is a real skill in its own right.
+  \item \textbf{Modularity helps verification, not only readability.} The \texttt{setProduct} rewrite illustrated this for us. Reusing \texttt{setScale} and \texttt{union} did not just make the code shorter. It let us reuse their proofs, and in our case this made the difference between a proof that timed out and one that verified.
+\end{itemize}
+
+\subsection{Did AI help or slow us down?}
+
+Overall, we think it helped, with some caveats.
+
+\begin{itemize}
+  \item \textbf{Where it helped most:} explaining failures. Dafny error messages point at a line but do not tell you which missing fact would fix it. Asking Claude Code ``why might this invariant not be maintained?'' often got us to the answer faster than trial and error, especially for the \texttt{setProduct} timeout.
+  \item \textbf{Where it was less useful:} its explanations were not always right, and a confident explanation of a verifier failure is not the same thing as a proof. We still had to run Dafny after every suggestion to see whether it actually helped. We found it worked best when we treated it as a second pair of eyes rather than as an authority.
+  \item \textbf{A risk we were aware of:} it would have been easy to hand over the whole task and end up with code that verifies but that we do not understand. We tried to keep it in a reviewing role, so that we understood each change ourselves.
+\end{itemize}
+
+\subsection{Other thoughts}
+
+\begin{itemize}
+  \item The way Dafny makes you prove ``obvious'' things (like \texttt{s1[..|s1|] == s1}) was frustrating at first. After a while it became useful, because it forces you to notice which facts your argument actually depends on.
+  \item We found it helpful to write a comment in plain English next to each loop invariant before writing it in Dafny. If we could not say the invariant clearly in English, the Dafny version was usually wrong too.
+  \item Formal verification felt very different from testing. A test checks a handful of inputs. Here, once Dafny accepts a method, we know it meets its specification for \emph{every} input. The catch, as \texttt{isSet} showed us, is that this is only as good as the specification itself.
+\end{itemize}
+
+\end{document}
