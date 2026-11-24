@@ -1,4 +1,7 @@
-
+/***
+Name: Hong Shen; Student ID: 22338684 
+Name: Leon Andorfi; Student ID: 23335878
+***/
 /*** Even ***/
 
 ghost predicate isEven(n: int) {
