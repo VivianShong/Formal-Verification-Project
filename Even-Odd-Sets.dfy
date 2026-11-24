@@ -119,7 +119,7 @@ lemma InvertParityCorrect(n: int)
 /* A set is represented as a sequence with no duplicates */
 predicate isSet(s: seq<int>) 
 {
- forall i,j :: 0 <= i < j < |s| ==> s[i] != s[j]
+ forall i, j :: 0 <= i < |s| && 0 <= j < |s| && s[i] == s[j] ==> i == j
 }
 
 // hint don't use return statements. Set b instead.
