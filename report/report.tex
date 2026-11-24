@@ -10,6 +10,7 @@
 \usepackage{booktabs}
 \usepackage{tabularx}
 \usepackage{enumitem}
+\usepackage{needspace}
 \usepackage[hidelinks]{hyperref}
 
 \setlist{itemsep=2pt, topsep=4pt}
@@ -123,7 +124,7 @@ For example, \texttt{intersection(s1, s2)} walks through \texttt{s1} and keeps a
 \begin{quote}
   After looking at the first \texttt{i} elements of \texttt{s1}, the result \texttt{t} contains exactly those elements of \texttt{s1[..i]} that are also in \texttt{s2}.
 \end{quote}
-When the loop ends, \texttt{i} equals \texttt{|s1|}, so \texttt{s1[..i]} is all of \texttt{s1}, and the invariant becomes the postcondition. In practice this last step needs a nudge, which is why several methods end with \texttt{assert s1[..i] == s1;}. Dafny knows this fact is true, but it does not think to use it unless we mention it.
+When the loop ends, \texttt{i} equals \texttt{|s1|}, so \texttt{s1[..i]} is all of \texttt{s1}, and the invariant becomes the postcondition. In practice this last step needs a nudge, which is why several methods end with \texttt{assert s1[..i] == s1}. Dafny knows this fact is true, but it does not think to use it unless we mention it.
 
 \paragraph{Parity facts.} Parts 2 and 3 also ask us to prove facts like ``if every element of \texttt{s} is even, then every element of \texttt{setScale(s, n)} is even''. Dafny does not know number theory out of the box, so we proved small lemmas such as \texttt{EvenTimes} (an even number times anything is even) and \texttt{OddTimesOdd}, and then called them inside the loops at the exact element being added. A lemma call is like telling Dafny ``remember this fact about \texttt{s[i]}''.
 
@@ -224,7 +225,7 @@ In words: if every element of \texttt{s1} is even and every element of \texttt{s
 
 This is a statement about the exact sequence, not just its elements. To prove it we keep the invariant ``\texttt{t == s1[..i]}'' (\texttt{t} is exactly the first \texttt{i} elements of \texttt{s1}) in that case. With \texttt{t := t + [s1[i]]}, the step from \texttt{s1[..i]} to \texttt{s1[..i+1]} is a plain fact about sequences, and Dafny handles it once we state \texttt{s1[..i+1] == s1[..i] + [s1[i]]}.
 
-With \texttt{addToSet}, the result depends on whether \texttt{s1[i]} was already in \texttt{t}, and Dafny has to reason through the contract of another method to see which branch was taken. Appending directly removes that indirection. The cost is that we lose the duplicate check that \texttt{addToSet} gave us for free, so we had to prove by hand that \texttt{s1[i]} is not already in \texttt{t}. That follows from \texttt{s1} itself having no duplicates, which we tell Dafny with \texttt{assert s1[i] !in s1[..i];}.
+With \texttt{addToSet}, the result depends on whether \texttt{s1[i]} was already in \texttt{t}, and Dafny has to reason through the contract of another method to see which branch was taken. Appending directly removes that indirection. The cost is that we lose the duplicate check that \texttt{addToSet} gave us for free, so we had to prove by hand that \texttt{s1[i]} is not already in \texttt{t}. That follows from \texttt{s1} itself having no duplicates, which we tell Dafny with \texttt{assert s1[i] !in s1[..i]}.
 
 \subsection*{Change 4: \texttt{setProduct} (Part 2 to Part 3)}
 
@@ -232,6 +233,7 @@ This was the largest change, so we explain it in more detail.
 
 \paragraph{What \texttt{setProduct} does.} Given two sets \texttt{s1} and \texttt{s2}, it returns every number you can get by multiplying an element of \texttt{s1} by an element of \texttt{s2}, without duplicates. For example, \texttt{setProduct([1, 2], [3, 4])} contains \texttt{3, 4, 6, 8}. It helps to picture a table with one row per element of \texttt{s1} and one column per element of \texttt{s2}, where each cell is a product. The result is everything in the table, with duplicates removed.
 
+\needspace{16\baselineskip}
 \textbf{Original (Part 2): a nested loop that visits every cell.}
 \begin{lstlisting}
 t := [];
@@ -296,9 +298,9 @@ For completeness: \texttt{checkSet}, \texttt{addToSet}, \texttt{union}, \texttt{
 \subsection{Which methods were hardest, and why}
 
 \begin{itemize}
-  \item \textbf{\texttt{setProduct} was the most difficult.} We explained the details above. The short version is that it is the only method that combines multiplication of two variables with ``there exist two indices'' statements inside two loops, and this combination is known to be difficult for SMT solvers. It was also the hardest to debug, because the failure was a timeout. A failed assertion tells you \emph{what} Dafny could not prove. A timeout gives much less information about where the problem lies.
+  \item \textbf{\texttt{setProduct} was the most difficult.} We explained the details above. The short version is that it is the only method that combines multiplication of two variables with ``there exist two indices'' statements inside two loops, and this combination is known to be difficult for SMT solvers. It was also the hardest to debug, because Dafny reported a timeout instead of a specific failed assertion, so it was not clear which part of the proof was causing the problem.
   \item \textbf{\texttt{difference} in Part 3} was the second hardest. The postcondition \texttt{t == s1} is about the exact sequence, not just which elements it contains, so our usual ``\texttt{t} contains exactly these elements'' invariant was not enough. We needed an extra invariant that pins down \texttt{t} completely in the even/odd case, and we had to stop using \texttt{addToSet}.
-  \item \textbf{Before Part 3 was released, we made a mistake in the definition of \texttt{isSet} in Parts 1--2.} At first we assumed that the set had to be sorted, but it does not. It was not hard to fix, but it was the most instructive mistake. Our sorted definition looked reasonable at first, and we only found the problem when a later method could not be verified.
+  \item \textbf{Before Part 3 was released, we made a mistake in the definition of \texttt{isSet} in Parts 1--2.} At first we assumed that the set had to be sorted, but it does not need to be. It was not hard to fix, but it was the most instructive mistake. Our sorted definition looked reasonable at first, and we only found the problem when a later method could not be verified.
 \end{itemize}
 
 \subsection{How proof attempts changed our understanding of specification and correctness}
